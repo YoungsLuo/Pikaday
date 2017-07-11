@@ -116,7 +116,9 @@
     compareDates = function(a,b)
     {
         // weak date comparison (use setToStartOfDay(date) to ensure correct result)
-        return a.getTime() === b.getTime();
+        var aa = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+        var bb = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+        return aa.getTime() === bb.getTime();
     },
 
     extend = function(to, from, overwrite)
@@ -172,6 +174,19 @@
         return calendar;
     },
 
+    getValue = function(length, left, max)
+    {
+        var value = parseInt(left/length*max)
+        return toTimeValue(value);
+    },
+
+    toTimeValue = function(value) {
+        if(value < 10){
+            value = "0" + value
+        }
+        return value;
+    },
+
     /**
      * defaults and localisation
      */
@@ -192,6 +207,12 @@
 
         // automatically fit in the viewport even if it means repositioning from the position option
         reposition: true,
+        
+        // the default datepicker with no timepicker
+        isTimepicker: false,
+
+        //label width for different language, defualt for En
+        timelabelWidth: 55,
 
         // the default output format for `.toString()` and `field` value
         format: 'YYYY-MM-DD',
@@ -271,7 +292,10 @@
             nextMonth     : 'Next Month',
             months        : ['January','February','March','April','May','June','July','August','September','October','November','December'],
             weekdays      : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
-            weekdaysShort : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+            weekdaysShort : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+            hours: 'hours',
+            minutes: 'minutes',
+            seconds: 'seconds'
         },
 
         // Theme Classname
@@ -443,6 +467,50 @@
         return '<table cellpadding="0" cellspacing="0" class="pika-table" role="grid" aria-labelledby="' + randId + '">' + renderHead(opts) + renderBody(data) + '</table>';
     },
 
+    renderTime = function(opts, date)
+    {
+        var time = isDate(date) ? date : setToStartOfDay(new Date())
+        var html = '<div class="time-container" id="time-container">\
+            <div class="show-container">\
+                <input class="time-show" id="hour-input" inputtype="hour" value="' + toTimeValue(time.getHours()) +'"/>\
+                :\
+                <input class="time-show" id="minute-input" inputtype="minute" value="' + toTimeValue(time.getMinutes()) +'"/>\
+                :\
+                <input class="time-show" id="second-input" inputtype="second" value="' + toTimeValue(time.getSeconds()) +'"/>\
+            </div>\
+            <div class="range-container">\
+                <label style="width:' + opts.timelabelWidth + 'px;">' + opts.i18n.hours + '</label>\
+                <div class="bar-container" style="margin-left:' + opts.timelabelWidth + 'px;">\
+                    <div class="bar-line" id="hour-line">\
+                        <div class="bar-selected"></div>\
+                        <div class="bar-pointer" inputtype="hour" id="hour-pointer" max="23"></div>\
+                        <div class="bar-click"></div>\
+                    </div>\
+                </div>\
+            </div>\
+            <div class="range-container">\
+                <label style="width:' + opts.timelabelWidth + 'px;">' + opts.i18n.minutes + '</label>\
+                <div class="bar-container" style="margin-left:' + opts.timelabelWidth + 'px;">\
+                    <div class="bar-line">\
+                        <div class="bar-selected"></div>\
+                        <div class="bar-pointer" inputtype="minute" id="minute-pointer" max="59"></div>\
+                        <div class="bar-click"></div>\
+                    </div>\
+                </div>\
+            </div>\
+            <div class="range-container">\
+                <label style="width:' + opts.timelabelWidth + 'px;">' + opts.i18n.seconds + '</label>\
+                <div class="bar-container" style="margin-left:' + opts.timelabelWidth + 'px;">\
+                    <div class="bar-line">\
+                        <div class="bar-selected"></div>\
+                        <div class="bar-pointer" inputtype="second" id="second-pointer" max="59"></div>\
+                        <div class="bar-click"></div>\
+                    </div>\
+                </div>\
+            </div>\
+        </div>';
+        return html;
+    },
 
     /**
      * Pikaday constructor
@@ -451,7 +519,6 @@
     {
         var self = this,
             opts = self.config(options);
-
         self._onMouseDown = function(e)
         {
             if (!self._v) {
@@ -465,7 +532,9 @@
 
             if (!hasClass(target, 'is-disabled')) {
                 if (hasClass(target, 'pika-button') && !hasClass(target, 'is-empty') && !hasClass(target.parentNode, 'is-disabled')) {
-                    self.setDate(new Date(target.getAttribute('data-pika-year'), target.getAttribute('data-pika-month'), target.getAttribute('data-pika-day')));
+                    var ddate = new Date(target.getAttribute('data-pika-year'), target.getAttribute('data-pika-month'), target.getAttribute('data-pika-day'))
+                    if(opts.isTimepicker) ddate = new Date(target.getAttribute('data-pika-year'), target.getAttribute('data-pika-month'), target.getAttribute('data-pika-day'), document.getElementById('hour-input').getAttribute("value"), document.getElementById('minute-input').getAttribute("value"), document.getElementById('second-input').getAttribute("value"))
+                    self.setDate(ddate)
                     if (opts.bound) {
                         sto(function() {
                             self.hide();
@@ -480,6 +549,16 @@
                 }
                 else if (hasClass(target, 'pika-next')) {
                     self.nextMonth();
+                }else if (hasClass(target, "bar-click")) {
+                    
+                    self.pointer = e.target.previousSibling.previousSibling
+                    addEvent(target, "mouseup", self._clickBar)
+                }else if (hasClass(target, 'bar-pointer')){
+                    self.pointer = target
+                    self.clientX = e.clientX
+                    self.offsetLeft = target.offsetLeft
+                    addEvent(document, "mousemove", self._drag)
+                    addEvent(document, "mouseup", self._dragEnd)
                 }
             }
             if (!hasClass(target, 'pika-select')) {
@@ -493,6 +572,31 @@
             } else {
                 self._c = true;
             }
+            
+        };
+
+        self._drag = function(e)
+        {
+            var left = e.clientX - self.clientX + self.offsetLeft
+            left = self.setPointerPosition(left, self.pointer)
+            self.renderValue(left, self.pointer)
+        };
+
+        self._dragEnd = function()
+        {
+            removeEvent(document, "mousemove", self._drag)
+            removeEvent(document, "mouseup", self._dragEnd)
+            self.pointer = undefined;
+            self.barline = undefined;
+            
+        };
+
+        self._clickBar = function(e)
+        {
+            var left = e.offsetX
+            var pointerRadius = self.pointer.offsetHeight/2
+            left = self.setPointerPosition(left + pointerRadius, self.pointer)
+            self.renderValue(left - pointerRadius, self.pointer)
         };
 
         self._onChange = function(e)
@@ -620,15 +724,15 @@
 
         self.el = document.createElement('div');
         self.el.className = 'pika-single' + (opts.isRTL ? ' is-rtl' : '') + (opts.theme ? ' ' + opts.theme : '');
-
+        
         addEvent(self.el, 'mousedown', self._onMouseDown, true);
         addEvent(self.el, 'touchend', self._onMouseDown, true);
         addEvent(self.el, 'change', self._onChange);
-
+        
         if (opts.keyboardInput) {
             addEvent(document, 'keydown', self._onKeyChange);
         }
-
+        
         if (opts.field) {
             if (opts.container) {
                 opts.container.appendChild(self.el);
@@ -660,7 +764,7 @@
         } else {
             self.gotoDate(new Date());
         }
-
+        
         if (opts.bound) {
             this.hide();
             self.el.className += ' is-bound';
@@ -752,6 +856,9 @@
             if (hasMoment) {
               return moment(this._d).format(format);
             }
+            if (this._o.isTimepicker){
+                return this._d.toString();
+            }
             return this._d.toDateString();
         },
 
@@ -813,7 +920,7 @@
             }
 
             this._d = new Date(date.getTime());
-            setToStartOfDay(this._d);
+            if(!this._o.isTimepicker) setToStartOfDay(this._d);
             this.gotoDate(this._d);
 
             if (this._o.field) {
@@ -1011,6 +1118,7 @@
             }
 
             this.el.innerHTML = html;
+            
 
             if (opts.bound) {
                 if(opts.field.type !== 'hidden') {
@@ -1028,6 +1136,52 @@
                 // let the screen reader user know to use arrow keys
                 opts.field.setAttribute('aria-label', opts.ariaLabel);
             }
+            if(opts.isTimepicker) this.adjustTimePositions()
+        },
+
+        adjustTimePositions: function()
+        {
+            this.adjustTimePosition(document.getElementById("hour-input"))
+            this.adjustTimePosition(document.getElementById("minute-input"))
+            this.adjustTimePosition(document.getElementById("second-input"))
+        },
+
+        adjustTimePosition: function(input) {
+            var inputtype = input.getAttribute("inputtype")
+            var pointer = document.getElementById(inputtype + "-pointer")
+            var value = parseInt(input.getAttribute("value"))
+            var max = parseInt(pointer.getAttribute("max"))
+            var barline =  pointer.parentNode
+            var left = parseInt(value/max*barline.offsetWidth)
+            this.setPointerPosition(left, pointer)
+        },
+
+        setPointerPosition: function(left, pointer)
+        {
+            
+            var barWidth = pointer.parentNode.offsetWidth
+            var pointerRadius = pointer.offsetHeight/2
+            if(left > barWidth - pointerRadius) {
+                left = barWidth - pointerRadius
+            }else if(left < -pointerRadius){
+                left = -pointerRadius
+            }
+            pointer.style.left = left + "px"
+            var barSelected = pointer.previousSibling.previousSibling
+            barSelected.style.width = left + "px"
+            return left
+        },
+
+        renderValue: function(pleft, pointer)
+        {
+            var left = pleft
+            var width = pointer.parentNode.offsetWidth
+            var pointerRadius = pointer.offsetHeight/2
+            var max = pointer.getAttribute("max")
+            var value = getValue(width, left + pointerRadius, max)
+            var inputId = pointer.getAttribute("inputtype");
+            var input = document.getElementById(inputId + "-input")
+            input.setAttribute("value", value)
         },
 
         adjustPosition: function()
@@ -1173,7 +1327,7 @@
                     isWeekSelected = false;
                 }
             }
-            return renderTable(opts, data, randId);
+            return renderTable(opts, data, randId) + (opts.isTimepicker ? renderTime(opts, this._d) : '');
         },
 
         isVisible: function()
@@ -1194,6 +1348,7 @@
                 if (typeof this._o.onOpen === 'function') {
                     this._o.onOpen.call(this);
                 }
+                if(this._o.isTimepicker) this.adjustTimePositions()
             }
         },
 
