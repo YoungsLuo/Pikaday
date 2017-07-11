@@ -88,7 +88,7 @@
 
     isDate = function(obj)
     {
-        return (/Date/).test(Object.prototype.toString.call(obj)) && !isNaN(obj.getTime());
+        return !!obj && (/Date/).test(Object.prototype.toString.call(obj)) && !isNaN(obj.getTime());
     },
 
     isWeekend = function(date)
@@ -172,6 +172,19 @@
             calendar.month -= 12;
         }
         return calendar;
+    },
+
+    getElementInParent = function(tag, id, parent) 
+    {
+        var element = null;
+        var elements = parent.getElementsByTagName(tag);
+        for(var i=0; i < elements.length; i++){
+            if(elements[i].id == id) {
+                element = elements[i];
+                break;
+            }
+        }
+        return element;
     },
 
     getValue = function(length, left, max)
@@ -1141,14 +1154,18 @@
 
         adjustTimePositions: function()
         {
-            this.adjustTimePosition(document.getElementById("hour-input"))
-            this.adjustTimePosition(document.getElementById("minute-input"))
-            this.adjustTimePosition(document.getElementById("second-input"))
+            var inputs = this.el.getElementsByTagName("input")
+            for(var i=0; i < inputs.length; i++) {
+                var input = inputs[i]
+                if(input.hasAttribute("inputtype")){
+                    this.adjustTimePosition(input)
+                }
+            }
         },
 
         adjustTimePosition: function(input) {
-            var inputtype = input.getAttribute("inputtype")
-            var pointer = document.getElementById(inputtype + "-pointer")
+            var pointerId = input.getAttribute("inputtype") + "-pointer";
+            var pointer = getElementInParent("div", pointerId, this.el)
             var value = parseInt(input.getAttribute("value"))
             var max = parseInt(pointer.getAttribute("max"))
             var barline =  pointer.parentNode
@@ -1179,8 +1196,8 @@
             var pointerRadius = pointer.offsetHeight/2
             var max = pointer.getAttribute("max")
             var value = getValue(width, left + pointerRadius, max)
-            var inputId = pointer.getAttribute("inputtype");
-            var input = document.getElementById(inputId + "-input")
+            var inputId = pointer.getAttribute("inputtype") + "-input";
+            var input = getElementInParent("input", inputId, this.el)
             input.setAttribute("value", value)
         },
 
